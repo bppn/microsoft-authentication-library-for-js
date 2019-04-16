@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Quickstart for MSAL JS</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bluebird/3.3.4/bluebird.min.js"></script>
+  <script src="dist/msal.js" class="pre"></script>
+</head>
+
+<body>
+  <h4 id="WelcomeMessage"></h4>
+  <button id="SignOut" onclick="signOut()">Sign Out</button>
+  <br /><br />
+  <pre id="json"></pre>
+
+  <script>
+    var applicationConfig = {
+      clientID: "245e9392-c666-4d51-8f8a-bfd9e55b2456",
+      authority: "https://login.microsoftonline.com/common",
+      graphScopes: ["user.read", "Mail.Send"],
+      graphEndpoint: "https://graph.microsoft.com/v1.0/me"
+    };
+
+    var devLogger = new Msal.Logger(loggerCallback, { level: Msal.LogLevel.Verbose, correlationId: '12345' });
+    function loggerCallback(logLevel, message, piiEnabled) {
+      console.log(message);
+    }
+
+    var config = {
+      auth: {
+        clientId: applicationConfig.clientID,
+        authority: applicationConfig.authority,
+        validateAuthority: true
+      },
+      cache: {
+        cacheLocation: "localStorage",
+        storeAuthStateInCookie: true
+      },
+      system: {
+        logger: devLogger
+      }
+    };
+
+    var myMSALObj = new Msal.UserAgentApplication(config);
+    myMSALObj.handleRedirectCallbacks(acquireTokenRedirectCallBack, acquireTokenErrorRedirectCallBack);
+
+    // TEST CODE - REDIRECT
+    let loginRequest = {
+      scopes: applicationConfig.graphScopes
+    };
+
+    if (!myMSALObj.getAccount()) {
+      myMSALObj.loginRedirect(loginRequest);
+    }
+    else {
+        showWelcomeMessage();
+        acquireTokenRedirectAndCallMSGraph();
+    };
+    // TEST CODE - ENDS
+
+    function signOut() {
+      myMSALObj.logout();
+    }
+
+
+    function callMSGraph(theUrl, accessToken, callback) {
+      var xmlHttp = new XMLHttpRequest();
+      xmlHttp.onreadystatechange = function () {
+        if (this.readyState == 4 && this.status == 200)
+          callback(JSON.parse(this.responseText));
+      }
+      xmlHttp.open("GET", theUrl, true); // true for asynchronous
+      xmlHttp.setRequestHeader('Authorization', 'Bearer ' + accessToken);
+      xmlHttp.send();
+    }
+
+    function graphAPICallback(data) {
+      //Display user data on DOM
+      var divWelcome = document.getElementById('WelcomeMessage');
+      divWelcome.innerHTML += " to Microsoft Graph API!!";
+      document.getElementById("json").innerHTML = JSON.stringify(data, null, 2);
+    }
+
+    function showWelcomeMessage() {
+      var divWelcome = document.getElementById('WelcomeMessage');
+      divWelcome.innerHTML += 'Welcome ' + myMSALObj.getAccount().userName;
+      console.log(myMSALObj.getAccount());
+    }
+
+    // This function can be removed if you do not need to support IE
+    function acquireTokenRedirectAndCallMSGraph() {
+      //Call acquireTokenSilent (iframe) to obtain a token for Microsoft Graph
+      let tokenRequest = {
+        scopes: applicationConfig.graphScopes
+      };
+      myMSALObj.acquireTokenSilent(tokenRequest).then(function (tokenResponse) {
+        console.log(tokenResponse.scopes);
+        callMSGraph(applicationConfig.graphEndpoint, tokenResponse.accessToken, graphAPICallback);
+      }).catch(function (error) {
+        console.log(error);
+        //Call acquireTokenRedirect in case of acquireToken Failure
+        if (error.errorMessage.indexOf("consent_required") !== -1 || error.errorMessage.indexOf("interaction_required") !== -1 || error.errorMessage.indexOf("login_required") !== -1) {
+          myMSALObj.acquireTokenRedirect(tokenRequest);
+        }
+      });
+    }
+
+    function acquireTokenRedirectCallBack(response) {
+      if (response.tokenType === "access_token") {
+        callMSGraph(applicationConfig.graphEndpoint, response.accessToken, graphAPICallback);
+      } else {
+        console.log("token type is:" + response.tokenType);
+      }
+    }
+
+    function acquireTokenErrorRedirectCallBack(error) {
+      console.log(error);
+    }
+
+  </script>
+</body>
+
+</html>
